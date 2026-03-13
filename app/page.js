@@ -29,7 +29,7 @@ const VIBE_PROMPT = `As an expert Lead Generation Specialist using Vibe Prospect
 }
 
 --- ENRICHMENT PROMPT ---
-"I have a list of business names. For each business below, please find their official email address, primary phone number, and the name of the owner or decision-maker. Format it as a clean table:
+"I have a list of business names. For each business below, please find their official email address, primary phone number, and social media (Instagram/Facebook). Format it as a clean table:
 
 Businesses:
 [PASTE NAMES HERE]
@@ -47,8 +47,10 @@ const getFillClass = (s) => {
   return 'fill-high';
 };
 
-function LeadCard({ lead, onAnalyze }) {
+function LeadCard({ lead: initialLead, onAnalyze }) {
+  const [lead, setLead] = useState(initialLead);
   const [verifying, setVerifying] = useState(false);
+  
   const icon = NICHE_ICONS[lead.niche] || '🏢';
   const scoreClass = getScoreClass(lead.websiteScore);
   const fillClass = getFillClass(lead.websiteScore);
@@ -65,9 +67,19 @@ function LeadCard({ lead, onAnalyze }) {
       const data = await res.json();
       if (data.success && data.verification) {
         const v = data.verification;
-        alert(`Verification: ${lead.name}\n\nStatus: ${v.isValid ? '✓ VALID' : '✗ INVALID'}\nSuggested Domain: ${v.suggestedDomain || 'N/A'}\nReason: ${v.reason || 'No reason provided'}`);
+        // Update local state with verified info
+        const updatedLead = { 
+          ...lead, 
+          website: v.suggestedWebsite || lead.website,
+          domain: v.suggestedDomain || lead.domain,
+          hasWebsite: v.isValid || lead.hasWebsite,
+          phone: v.phone || lead.phone,
+          socials: { ...lead.socials, ...v.socials }
+        };
+        setLead(updatedLead);
+        alert(`Verification Successful!\n\nStatus: ${v.isValid ? '✓ VALID' : '✗ INVALID'}\nPhone: ${v.phone || 'Found'}\nSocials: ${Object.keys(v.socials || {}).filter(k => v.socials[k]).join(', ') || 'N/A'}`);
       } else {
-        alert(`Verify failed for ${lead.name}\n\nError: ${data.error || 'Unknown — check Vercel function logs'}`);
+        alert(`Verify failed: ${data.error || 'Unknown error'}`);
       }
     } catch (err) {
       alert(`Network error: ${err.message}`);
@@ -87,59 +99,59 @@ function LeadCard({ lead, onAnalyze }) {
           <div className="card-name">{lead.name}</div>
           <div className="card-location">{FLAGS[lead.countryCode]} {lead.city}, {lead.country}</div>
         </div>
-        <div className={`card-niche-badge niche-${lead.niche.replace(/\s+/g, '')}`} style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>{lead.niche}</div>
+        <div className={`card-niche-badge`} style={{ background: 'var(--accent-dim)', color: 'var(--accent)', marginLeft: 'auto' }}>{lead.niche}</div>
       </div>
 
       <div className="card-body" style={{ flex: 1 }}>
-        <div className="card-meta-row">
+        <div className="card-meta-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
           <div className={`meta-pill ${lead.hasWebsite ? 'has-website' : 'no-website'}`}>
-            {lead.hasWebsite ? '✓ Website' : '✕ No Site'}
+            {lead.hasWebsite ? '✓ Website' : '✕ No Website'}
           </div>
+          {lead.phone && <div className="meta-pill" style={{ color: 'var(--blue)', background: 'var(--blue-dim)' }}>📞 {lead.phone}</div>}
+          {!lead.phone && <div className="meta-pill" style={{ color: 'var(--red)', background: 'var(--red-dim)' }}>✕ No Number</div>}
           <div className="meta-pill">💰 ${lead.techSpend.toLocaleString()}/yr</div>
-          <div className="meta-pill">👥 {lead.employees}</div>
         </div>
 
-        <div className="tech-stack" style={{ margin: '12px 0' }}>
-          {lead.webTech.split(' / ').map((t, i) => (
+        {lead.socials && (
+          <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+            {lead.socials.instagram && <a href={lead.socials.instagram} target="_blank" title="Instagram">📸</a>}
+            {lead.socials.facebook && <a href={lead.socials.facebook} target="_blank" title="Facebook">👥</a>}
+            {lead.socials.linkedin && <a href={lead.socials.linkedin} target="_blank" title="LinkedIn">💼</a>}
+          </div>
+        )}
+
+        <div className="tech-stack" style={{ marginBottom: 12 }}>
+          {lead.webTech && lead.webTech.split(' / ').map((t, i) => (
             <span key={i} className="tech-tag">{t}</span>
           ))}
         </div>
 
         <div className="analysis-box">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <span className="score-label">Health</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <span className="score-label">Site Health</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div className="score-bar">
-                <div className={`score-fill ${fillClass}`} style={{ width: `${lead.websiteScore}%` }}></div>
-              </div>
+              <div className="score-bar"><div className={`score-fill ${fillClass}`} style={{ width: `${lead.websiteScore}%` }}></div></div>
               <span style={{ fontWeight: 800, fontSize: 14 }}>{lead.websiteScore}</span>
             </div>
           </div>
-          <div className="analysis-flaws">
-            {lead.flaws.slice(0, 2).map((f, i) => (
-              <div key={i} className="flaw-item" style={{ fontSize: 12 }}>{f}</div>
-            ))}
-          </div>
+          {lead.flaws && lead.flaws.length > 0 && (
+            <div className="analysis-flaws">
+              {lead.flaws.slice(0, 1).map((f, i) => <div key={i} className="flaw-item" style={{ fontSize: 12 }}>{f}</div>)}
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="card-links" style={{ padding: 0, marginTop: 'auto' }}>
+      <div className="card-links" style={{ padding: 0, marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', gap: 8, width: '100%' }}>
-          {lead.hasWebsite && (
+          {lead.hasWebsite && lead.website && (
             <a href={lead.website} target="_blank" rel="noopener" className="card-link" style={{ flex: 1 }}>Site ↗</a>
           )}
-          <button
-            className="card-link"
-            onClick={handleVerify}
-            style={{ flex: 1, cursor: verifying ? 'wait' : 'pointer' }}
-            disabled={verifying}
-          >
-            {verifying ? '...' : '🔍 Verify'}
+          <button className="card-link" onClick={handleVerify} style={{ flex: 1, cursor: verifying ? 'wait' : 'pointer' }} disabled={verifying}>
+            {verifying ? '...' : '🔍 Verify Business'}
           </button>
         </div>
-        <button className="analyze-btn" style={{ marginTop: 8 }} onClick={() => onAnalyze(lead)}>
-          ⚡ Generate AI Opener
-        </button>
+        <button className="analyze-btn" onClick={() => onAnalyze(lead)}>⚡ Generate AI Opener</button>
       </div>
     </div>
   );
@@ -152,8 +164,6 @@ function AnalysisDrawer({ lead, onClose }) {
 
   useEffect(() => {
     setLoading(true);
-    setData(null);
-    setErr(null);
     fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -164,7 +174,7 @@ function AnalysisDrawer({ lead, onClose }) {
         if (j.success && j.analysis) {
           setData(j.analysis);
         } else {
-          setErr(j.error || 'No analysis returned. Check GEMINI_API_KEY in Vercel env vars.');
+          setErr(j.error || 'Check GEMINI_API_KEY');
         }
         setLoading(false);
       })
@@ -177,67 +187,60 @@ function AnalysisDrawer({ lead, onClose }) {
   if (!lead) return null;
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
-      background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(8px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
-    }} onClick={onClose}>
-      <div style={{
-        width: '100%', maxWidth: 640, background: 'var(--surface)',
-        border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
-        maxHeight: '90vh', overflowY: 'auto', position: 'relative',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
-      }} onClick={e => e.stopPropagation()}>
-        <div style={{ padding: '32px 32px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
+      <div style={{ width: '100%', maxWidth: 680, background: 'white', borderRadius: 16, maxHeight: '90vh', overflowY: 'auto', position: 'relative', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: '32px 40px 24px', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 800 }}>{lead.name}</h2>
-            <p style={{ color: 'var(--text-dim)', fontSize: 13, fontWeight: 500 }}>{lead.niche} • {lead.city}, {lead.country}</p>
+            <h2 style={{ fontSize: 28, fontWeight: 900, color: '#0f172a' }}>{lead.name}</h2>
+            <p style={{ color: '#64748b', fontSize: 14, fontWeight: 600 }}>{lead.niche} • {lead.city}, {lead.country}</p>
+            {lead.phone && <p style={{ color: 'var(--blue)', fontSize: 14, fontWeight: 700, marginTop: 4 }}>📞 {lead.phone}</p>}
           </div>
-          <button onClick={onClose} style={{ background: 'var(--bg)', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 20, width: 32, height: 32, borderRadius: '50%' }}>×</button>
+          <button onClick={onClose} style={{ background: '#f1f5f9', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 24, width: 40, height: 40, borderRadius: '50%', fontWeight: 800 }}>×</button>
         </div>
 
-        <div style={{ padding: 32 }}>
+        <div style={{ padding: 40 }}>
           {loading ? (
-            <div style={{ textAlign: 'center', padding: '40px 0' }}>
-              <div className="spinner" style={{ width: 40, height: 40, border: '3px solid var(--accent-dim)', borderTopColor: 'var(--accent)', marginBottom: 16 }}></div>
-              <p style={{ color: 'var(--text-dim)', fontWeight: 600 }}>Gemini is building your strategy...</p>
+            <div style={{ textAlign: 'center', padding: '60px 0' }}>
+              <div className="spinner" style={{ width: 50, height: 50, border: '4px solid #f1f5f9', borderTopColor: '#0f172a', marginBottom: 20 }}></div>
+              <p style={{ color: '#0f172a', fontWeight: 700, fontSize: 16 }}>AI is crafting your pitch...</p>
             </div>
           ) : err ? (
-            <div style={{ color: '#dc2626', padding: 24, textAlign: 'center', background: '#fef2f2', borderRadius: 12, border: '1px solid #fca5a5' }}>
-              <p style={{ fontWeight: 700, marginBottom: 8 }}>Analysis Error</p>
-              <p style={{ fontSize: 13 }}>{err}</p>
+            <div style={{ color: '#dc2626', padding: 32, textAlign: 'center', background: '#fef2f2', borderRadius: 16, border: '1px solid #fca5a5' }}>
+              <p style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>Analysis Failed</p>
+              <p style={{ fontSize: 14 }}>{err}</p>
+              <p style={{ fontSize: 12, marginTop: 12, color: '#991b1b' }}>Try switching to a different Gemini model or check your quota.</p>
             </div>
           ) : data ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
               <section>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <span style={{ fontSize: 18 }}>📞</span>
-                  <label style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-muted)' }}>Personalized Call Opener</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                  <span style={{ fontSize: 24 }}>📞</span>
+                  <label style={{ fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1.5, color: '#64748b' }}>Call Opener</label>
                 </div>
-                <div className="opener-text">"{data.callOpener || 'Opener could not be generated.'}"</div>
-                <button className="copy-btn" onClick={() => navigator.clipboard.writeText(data.callOpener || '')}>⎘ Copy Opener</button>
+                <div className="opener-text" style={{ fontSize: 17, background: '#f8fafc', borderLeft: '6px solid #0f172a' }}>"{data.callOpener}"</div>
+                <button className="copy-btn" style={{ padding: '8px 16px', fontSize: 13 }} onClick={() => navigator.clipboard.writeText(data.callOpener || '')}>⎘ Copy Call Script</button>
               </section>
 
               <section>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <span style={{ fontSize: 18 }}>✉️</span>
-                  <label style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-muted)' }}>Email Strategy</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                  <span style={{ fontSize: 24 }}>✉️</span>
+                  <label style={{ fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1.5, color: '#64748b' }}>Email Strategy</label>
                 </div>
-                <div style={{ background: 'var(--bg)', padding: 20, borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>Subject: <span style={{ color: 'var(--text)' }}>{data.emailSubject || 'No Subject'}</span></div>
-                  <div style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.7 }}>{data.emailOpener}</div>
-                  <button className="copy-btn" style={{ marginTop: 16 }} onClick={() => navigator.clipboard.writeText(`Subject: ${data.emailSubject}\n\n${data.emailOpener}`)}>⎘ Copy Full Email</button>
+                <div style={{ background: '#f8fafc', padding: 24, borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#64748b', marginBottom: 12, textTransform: 'uppercase' }}>Subject: <span style={{ color: '#0f172a' }}>{data.emailSubject}</span></div>
+                  <div style={{ fontSize: 15, color: '#334155', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{data.emailOpener}</div>
+                  <button className="copy-btn" style={{ marginTop: 20 }} onClick={() => navigator.clipboard.writeText(`Subject: ${data.emailSubject}\n\n${data.emailOpener}`)}>⎘ Copy Email</button>
                 </div>
               </section>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div style={{ background: 'var(--bg)', padding: 16, borderRadius: 12, border: '1px solid var(--border)' }}>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 800, marginBottom: 4 }}>Est. Value</div>
-                  <div style={{ fontSize: 20, color: 'var(--green)', fontWeight: 800 }}>{data.estimatedProjectValue || '~$3K'}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                <div style={{ background: 'white', padding: 20, borderRadius: 16, border: '2px solid #f1f5f9' }}>
+                  <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', fontWeight: 900, marginBottom: 6 }}>Est. Deal Value</div>
+                  <div style={{ fontSize: 24, color: '#16a34a', fontWeight: 900 }}>{data.estimatedProjectValue || '~$3,000'}</div>
                 </div>
-                <div style={{ background: 'var(--bg)', padding: 16, borderRadius: 12, border: '1px solid var(--border)' }}>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 800, marginBottom: 4 }}>Web Grade</div>
-                  <div style={{ fontSize: 20, color: 'var(--accent)', fontWeight: 800 }}>{data.websiteGrade || 'C'}</div>
+                <div style={{ background: 'white', padding: 20, borderRadius: 16, border: '2px solid #f1f5f9' }}>
+                  <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', fontWeight: 900, marginBottom: 6 }}>Website Grade</div>
+                  <div style={{ fontSize: 24, color: '#0f172a', fontWeight: 900 }}>{data.websiteGrade || 'C'}</div>
                 </div>
               </div>
             </div>
@@ -258,7 +261,7 @@ export default function Dashboard() {
 
   const filteredLeads = useMemo(() => {
     return LEADS.filter(l => {
-      const matchSearch = l.name.toLowerCase().includes(search.toLowerCase()) ||
+      const matchSearch = l.name.toLowerCase().includes(search.toLowerCase()) || 
                           l.city.toLowerCase().includes(search.toLowerCase()) ||
                           l.niche.toLowerCase().includes(search.toLowerCase());
       const matchCountry = filters.country === 'all' || l.country === filters.country;
@@ -274,43 +277,51 @@ export default function Dashboard() {
   }, [search, filters]);
 
   return (
-    <div>
+    <div style={{ background: '#f8fafc', minHeight: '100vh' }}>
       <header className="header">
         <div className="header-logo">
           <div className="header-logo-icon">⚡</div>
-          <span>LeadHunter <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>Pro</span></span>
+          <span>LeadHunter <span style={{ fontWeight: 400, color: '#64748b' }}>Pro</span></span>
         </div>
         <div className="header-meta">
-          <button
-            onClick={() => { navigator.clipboard.writeText(VIBE_PROMPT); alert('Vibe Prospecting Prompt copied to clipboard!'); }}
-            style={{ background: 'var(--accent)', color: 'white', border: 'none', padding: '6px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+          <button 
+            onClick={() => { navigator.clipboard.writeText(VIBE_PROMPT); alert('Vibe Prompt copied!'); }}
+            style={{ background: '#0f172a', color: 'white', border: 'none', padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 800, cursor: 'pointer', transition: '0.2s' }}
+            onMouseOver={(e) => e.target.style.opacity = '0.9'}
+            onMouseOut={(e) => e.target.style.opacity = '1'}
           >
             📋 Get Vibe Prompt
           </button>
-          <div className="header-badge">Gemini 2.0 Flash</div>
+          <div className="header-badge" style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bcf0da' }}>Gemini 1.5 Pro Enabled</div>
         </div>
       </header>
 
       <div className="ticker-bar">
-        <div className="ticker-inner" style={{ display: 'flex', gap: 40, whiteSpace: 'nowrap', animation: 'ticker 30s linear infinite', paddingLeft: '100%' }}>
-          {LEADS.map((l, i) => (
-            <div key={i}><span>NEW OPPORTUNITY</span> {l.name} ({l.city}) health score: {l.websiteScore}</div>
+        <div className="ticker-inner" style={{ display: 'flex', gap: 50, whiteSpace: 'nowrap', animation: 'ticker 40s linear infinite', paddingLeft: '100%' }}>
+          {LEADS.slice(0, 20).map((l, i) => (
+            <div key={i} style={{ display: 'flex', gap: 10 }}>
+              <span style={{ color: '#f59e0b' }}>[OPPORTUNITY]</span> {l.name} in {l.city} — Score: {l.websiteScore}
+            </div>
           ))}
         </div>
       </div>
 
-      <div className="stats-bar">
+      <div className="stats-bar" style={{ gap: 0 }}>
         <div className="stat-item">
           <div className="stat-value">{LEADS.length}</div>
-          <div className="stat-label">Database Leads</div>
+          <div className="stat-label">Total Leads</div>
         </div>
         <div className="stat-item">
-          <div className="stat-value" style={{ color: 'var(--red)' }}>{LEADS.filter(l => l.websiteScore <= 15).length}</div>
-          <div className="stat-label">Critical Priority</div>
+          <div className="stat-value" style={{ color: '#dc2626' }}>{LEADS.filter(l => l.websiteScore <= 15).length}</div>
+          <div className="stat-label">Critical Health</div>
         </div>
         <div className="stat-item">
-          <div className="stat-value" style={{ color: 'var(--blue)' }}>{LEADS.filter(l => l.techSpend > 1000).length}</div>
-          <div className="stat-label">High Tech Spend</div>
+          <div className="stat-value" style={{ color: '#2563eb' }}>{LEADS.filter(l => l.phone).length}</div>
+          <div className="stat-label">With Phone</div>
+        </div>
+        <div className="stat-item">
+          <div className="stat-value" style={{ color: '#16a34a' }}>{LEADS.filter(l => l.hasWebsite).length}</div>
+          <div className="stat-label">With Website</div>
         </div>
       </div>
 
@@ -318,12 +329,12 @@ export default function Dashboard() {
         <aside className="sidebar">
           <div className="sidebar-section">
             <label className="sidebar-label">Search</label>
-            <input type="text" className="filter-input" placeholder="Name or City..." value={search} onChange={e => setSearch(e.target.value)} />
+            <input type="text" className="filter-input" placeholder="Business or city..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
 
           <div className="sidebar-section">
             <label className="sidebar-label">Country</label>
-            <div className="filter-chips" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <div className="filter-chips">
               {countries.map(c => (
                 <button key={c} className={`chip ${filters.country === c ? 'active' : ''}`} onClick={() => setFilters({...filters, country: c})}>
                   {c === 'all' ? 'All' : c}
@@ -361,10 +372,9 @@ export default function Dashboard() {
       {activeLead && <AnalysisDrawer lead={activeLead} onClose={() => setActiveLead(null)} />}
 
       <style jsx global>{`
-        @keyframes ticker {
-          from { transform: translateX(0); }
-          to { transform: translateX(-100%); }
-        }
+        @keyframes ticker { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+        .spinner { border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
     </div>
   );
