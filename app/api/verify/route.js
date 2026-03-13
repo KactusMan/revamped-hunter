@@ -2,12 +2,10 @@ export async function POST(request) {
   const { lead } = await request.json();
 
   const systemPrompt = `You are a Lead Verification Assistant. Your job is to check if the provided website for a business is likely their official, most professional domain.
-
 If the website is a Linktree, a Facebook page, or a parked domain, you should search for a real, standalone professional website.
-
 Return ONLY a JSON object:
 {
-  "isValid": true/false,
+  "isValid": true,
   "suggestedDomain": "actual-domain.com",
   "reason": "Brief reason why it's valid or what's wrong with it"
 }`;
@@ -30,10 +28,13 @@ Location: ${lead.city}, ${lead.country}`;
     );
 
     const data = await response.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    const clean = text.replace(/```json\s?/g, '').replace(/```\s?/g, '').trim();
-    const parsed = JSON.parse(clean);
+    let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
     
+    // Nuclear clean: Extract raw JSON from possible markdown wrappers
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const clean = jsonMatch ? jsonMatch[0] : text;
+    
+    const parsed = JSON.parse(clean);
     return Response.json({ success: true, verification: parsed });
   } catch (err) {
     return Response.json({ success: false, error: err.message }, { status: 500 });

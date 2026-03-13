@@ -28,7 +28,12 @@ const VIBE_PROMPT = `As an expert Lead Generation Specialist using Vibe Prospect
   "flaws": ["specific website flaw 1", "specific website flaw 2"]
 }
 
-Focus on niches like: Plumbers, Bakeries, Dental Clinics in English-speaking regions (US, UK, CA, IE). Look for sites with poor mobile optimization, slow speeds, or missing SSL.`;
+--- ENRICHMENT PROMPT ---
+"I have a list of business names. For each business below, please find their official email address, primary phone number, and the name of the owner or decision-maker. Format it as a clean table:
+
+Businesses:
+[PASTE NAMES HERE]
+"`;
 
 const getScoreClass = (s) => {
   if (s <= 15) return 'score-low';

@@ -62,15 +62,15 @@ Known Issues: ${lead.flaws.join('; ')}`;
     const data = await response.json();
     let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
     
-    // Robust cleaning: remove markdown blocks and any trailing/leading whitespace
-    const clean = text.replace(/```json\s?/g, '').replace(/```\s?/g, '').trim();
+    // Nuclear clean: find the first { and last } and take everything in between
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const clean = jsonMatch ? jsonMatch[0] : text;
     
     try {
       const parsed = JSON.parse(clean);
       return Response.json({ success: true, analysis: parsed });
     } catch (parseErr) {
-      console.error('Parse Error:', clean);
-      return Response.json({ success: false, error: 'Failed to parse AI response' }, { status: 500 });
+      return Response.json({ success: false, error: 'AI returned invalid format. Try again.' }, { status: 500 });
     }
   } catch (err) {
     return Response.json({ success: false, error: err.message }, { status: 500 });
