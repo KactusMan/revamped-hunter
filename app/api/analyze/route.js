@@ -55,7 +55,7 @@ Known Issues: ${lead.flaws.join('; ')}`;
           contents: [{ parts: [{ text: userMessage }] }],
           generationConfig: { 
             temperature: 0.7, 
-            maxOutputTokens: 1000,
+            maxOutputTokens: 2048,
             response_mime_type: "application/json"
           },
         }),
@@ -66,21 +66,33 @@ Known Issues: ${lead.flaws.join('; ')}`;
 
     if (!response.ok || data.error) {
       const errMsg = data.error?.message || `Gemini API error: ${response.status}`;
-      console.error('Gemini API error:', errMsg);
       return Response.json({ success: false, error: errMsg }, { status: 500 });
     }
 
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
 
-    // Nuclear extraction — grab the first {...} block regardless of any preamble Gemini adds
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.error('No JSON block found in Gemini response:', text);
-      return Response.json({ success: false, error: 'No JSON returned by Gemini. Raw: ' + text.slice(0, 200) }, { status: 500 });
+    // If Gemini truncates, we try to find the start and manually close it for a "best effort" parse
+    let clean = text;
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+    
+    if (firstBrace !== -1) {
+      if (lastBrace !== -1 && lastBrace > firstBrace) {
+        clean = text.substring(firstBrace, lastBrace + 1);
+      } else {
+        // Truncated JSON - try to close the most likely structures
+        clean = text.substring(firstBrace) + '"]}'; 
+      }
     }
 
-    const parsed = JSON.parse(jsonMatch[0]);
-    return Response.json({ success: true, analysis: parsed });
+    try {
+      const parsed = JSON.parse(clean);
+      return Response.json({ success: true, analysis: parsed });
+    } catch (parseErr) {
+      // One last attempt: just return the raw text if it looks like it might have useful info
+      console.error('Final Parse Error:', parseErr, 'Raw:', text);
+      return Response.json({ success: false, error: 'AI response was interrupted. Please try again.' }, { status: 500 });
+    }
 
   } catch (err) {
     console.error('Analyze route error:', err.message);

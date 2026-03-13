@@ -200,7 +200,7 @@ function AnalysisDrawer({ lead, onClose }) {
 
         <div style={{ padding: 40 }}>
           {loading ? (
-            <div style={{ textAlign: 'center', padding: '60px 0' }}>
+            <div style={{ textAlign: 'center', padding: '60px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
               <div className="spinner" style={{ width: 50, height: 50, border: '4px solid #f1f5f9', borderTopColor: '#0f172a', marginBottom: 20 }}></div>
               <p style={{ color: '#0f172a', fontWeight: 700, fontSize: 16 }}>AI is crafting your pitch...</p>
             </div>
