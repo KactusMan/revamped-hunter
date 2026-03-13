@@ -163,24 +163,25 @@ function AnalysisDrawer({ lead, onClose }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
               <section>
                 <div className="opener-title">Personalized Call Opener</div>
-                <div className="opener-text" style={{ fontSize: 14 }}>"{data.callOpener}"</div>
-                <button className="copy-btn" onClick={() => navigator.clipboard.writeText(data.callOpener)}>⎘ Copy to Clipboard</button>
+                <div className="opener-text" style={{ fontSize: 14 }}>"{data?.callOpener || 'Opener could not be generated.'}"</div>
+                <button className="copy-btn" onClick={() => navigator.clipboard.writeText(data?.callOpener || '')}>⎘ Copy to Clipboard</button>
               </section>
 
               <section>
                 <div className="opener-title" style={{ color: 'var(--blue)' }}>Email Strategy</div>
                 <div style={{ background: 'var(--card)', padding: 16, borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>SUBJECT: {data.emailSubject}</div>
-                  <div style={{ fontSize: 13, color: 'var(--text-dim)', lineHeight: 1.6 }}>{data.emailOpener}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>SUBJECT: {data?.emailSubject || 'No Subject'}</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-dim)', lineHeight: 1.6 }}>{data?.emailOpener || 'Email body could not be generated.'}</div>
                 </div>
               </section>
 
               <section>
                 <div className="opener-title" style={{ color: 'var(--red)' }}>Critical Flaws</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {data.topFlaws.map((f, i) => (
+                  {(data?.topFlaws || []).map((f, i) => (
                     <div key={i} className="flaw-item" style={{ fontSize: 13 }}>{f}</div>
                   ))}
+                  {(!data?.topFlaws || data.topFlaws.length === 0) && <div className="flaw-item" style={{ fontSize: 13 }}>No specific flaws detected.</div>}
                 </div>
               </section>
 

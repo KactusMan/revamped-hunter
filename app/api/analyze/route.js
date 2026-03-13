@@ -60,10 +60,18 @@ Known Issues: ${lead.flaws.join('; ')}`;
     );
 
     const data = await response.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(clean);
-    return Response.json({ success: true, analysis: parsed });
+    let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    
+    // Robust cleaning: remove markdown blocks and any trailing/leading whitespace
+    const clean = text.replace(/```json\s?/g, '').replace(/```\s?/g, '').trim();
+    
+    try {
+      const parsed = JSON.parse(clean);
+      return Response.json({ success: true, analysis: parsed });
+    } catch (parseErr) {
+      console.error('Parse Error:', clean);
+      return Response.json({ success: false, error: 'Failed to parse AI response' }, { status: 500 });
+    }
   } catch (err) {
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
