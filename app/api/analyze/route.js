@@ -46,8 +46,11 @@ Social Networks: ${lead.socialNetworks}
 Known Issues: ${lead.flaws.join('; ')}`;
 
   try {
+    // Log to confirm API Key is present in the Vercel environment
+    console.log('GEMINI_API_KEY available:', !!process.env.GEMINI_API_KEY);
+
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -60,6 +63,10 @@ Known Issues: ${lead.flaws.join('; ')}`;
     );
 
     const data = await response.json();
+    
+    // Log the raw response from Gemini to see what we're getting
+    console.log('Gemini Raw Response:', JSON.stringify(data, null, 2));
+
     let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
     
     // Nuclear clean: find the first { and last } and take everything in between
