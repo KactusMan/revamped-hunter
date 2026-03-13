@@ -11,20 +11,20 @@ export async function POST(request) {
 5. SPECIFICITY: Don't say "your SEO is bad." Say "your 'Emergency Plumber' page doesn't even show up for people in [City]."
 
 ### CONTEXT FOR SMB TYPES:
-- Plumbers/Contractors/Electricians/Roofers/HVAC: Focus on "lost leads" and "mobile click-to-call." These guys get ALL their business from local search — if they're not ranking, they're invisible.
-- Dentists/Doctors/Physio: Focus on "trust signals" and "online booking friction." Patients won't call, they'll just move to the next result.
+- Plumbers/Contractors/Electricians/Roofers/HVAC: Focus on "lost leads" and "mobile click-to-call."
+- Dentists/Doctors/Physio: Focus on "trust signals" and "online booking friction."
 - Restaurants/Bakeries/Cafes: Focus on "menu readability," "Google Maps optimization," and "local search visibility."
 - Recruiters/Staffing: Focus on "candidate trust" and "job listing UX."
 - Cleaners/Pet Groomers/Locksmiths: Focus on "emergency/urgent need" and "instant quote/booking."
 
 ### JSON OUTPUT SCHEMA:
-Return ONLY a valid JSON object — no markdown, no backticks, no explanation:
+Return ONLY a valid JSON object — no markdown, no backticks, no preamble, no explanation whatsoever:
 {
   "websiteGrade": "F",
   "topFlaws": ["specific flaw 1 with city/context", "specific flaw 2", "specific flaw 3"],
   "opportunity": "One punchy sentence on the single biggest revenue opportunity",
   "callOpener": "Hey, I was just on [business name]'s site and noticed something weird on the mobile version — [specific observation]. I do web work for [niche] businesses around [city] and I reckon there's a quick fix here that'd get you more calls. Got 2 minutes?",
-  "emailSubject": "3-5 words, curiosity-driven e.g. 'broken link on [site]'",
+  "emailSubject": "3-5 words, curiosity-driven",
   "emailOpener": "2-sentence hook referencing a specific flaw immediately. No pleasantries.",
   "urgencySignals": ["concrete reason to act now with dollar impact if possible", "second urgency reason"],
   "estimatedProjectValue": "$X,XXX - $X,XXX",
@@ -59,11 +59,27 @@ Known Issues: ${lead.flaws.join('; ')}`;
     );
 
     const data = await response.json();
+
+    if (!response.ok || data.error) {
+      const errMsg = data.error?.message || `Gemini API error: ${response.status}`;
+      console.error('Gemini API error:', errMsg);
+      return Response.json({ success: false, error: errMsg }, { status: 500 });
+    }
+
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(clean);
+
+    // Nuclear extraction — grab the first {...} block regardless of any preamble Gemini adds
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error('No JSON block found in Gemini response:', text);
+      return Response.json({ success: false, error: 'No JSON returned by Gemini. Raw: ' + text.slice(0, 200) }, { status: 500 });
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]);
     return Response.json({ success: true, analysis: parsed });
+
   } catch (err) {
+    console.error('Analyze route error:', err.message);
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }

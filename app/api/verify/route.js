@@ -1,4 +1,4 @@
-export async function POST(request) {
+﻿export async function POST(request) {
   const { lead } = await request.json();
 
   const systemPrompt = `You are a Lead Verification Assistant. Your job is to check if the provided website for a business is likely their official, most professional domain.
@@ -18,7 +18,7 @@ Location: ${lead.city}, ${lead.country}`;
     console.log('GEMINI_API_KEY available for verify:', !!process.env.GEMINI_API_KEY);
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -42,3 +42,4 @@ Location: ${lead.city}, ${lead.country}`;
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
 }
+

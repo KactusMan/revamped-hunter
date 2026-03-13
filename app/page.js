@@ -63,11 +63,14 @@ function LeadCard({ lead, onAnalyze }) {
         body: JSON.stringify({ lead }),
       });
       const data = await res.json();
-      if (data.success) {
-        alert(`Verification for ${lead.name}:\n\nStatus: ${data.verification.isValid ? 'VALID' : 'INVALID'}\nSuggested: ${data.verification.suggestedDomain}\nReason: ${data.verification.reason}`);
+      if (data.success && data.verification) {
+        const v = data.verification;
+        alert(`Verification: ${lead.name}\n\nStatus: ${v.isValid ? '✓ VALID' : '✗ INVALID'}\nSuggested Domain: ${v.suggestedDomain || 'N/A'}\nReason: ${v.reason || 'No reason provided'}`);
+      } else {
+        alert(`Verify failed for ${lead.name}\n\nError: ${data.error || 'Unknown — check Vercel function logs'}`);
       }
     } catch (err) {
-      alert('Verification failed. Check console.');
+      alert(`Network error: ${err.message}`);
     }
     setVerifying(false);
   };
@@ -125,8 +128,8 @@ function LeadCard({ lead, onAnalyze }) {
           {lead.hasWebsite && (
             <a href={lead.website} target="_blank" rel="noopener" className="card-link" style={{ flex: 1 }}>Site ↗</a>
           )}
-          <button 
-            className="card-link" 
+          <button
+            className="card-link"
             onClick={handleVerify}
             style={{ flex: 1, cursor: verifying ? 'wait' : 'pointer' }}
             disabled={verifying}
@@ -149,6 +152,8 @@ function AnalysisDrawer({ lead, onClose }) {
 
   useEffect(() => {
     setLoading(true);
+    setData(null);
+    setErr(null);
     fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -156,10 +161,10 @@ function AnalysisDrawer({ lead, onClose }) {
     })
       .then(r => r.json())
       .then(j => {
-        if (j.success) {
+        if (j.success && j.analysis) {
           setData(j.analysis);
         } else {
-          setErr(j.error);
+          setErr(j.error || 'No analysis returned. Check GEMINI_API_KEY in Vercel env vars.');
         }
         setLoading(false);
       })
@@ -198,19 +203,19 @@ function AnalysisDrawer({ lead, onClose }) {
               <p style={{ color: 'var(--text-dim)', fontWeight: 600 }}>Gemini is building your strategy...</p>
             </div>
           ) : err ? (
-            <div style={{ color: 'var(--red)', padding: 24, textAlign: 'center', background: 'var(--red-dim)', borderRadius: 12 }}>
-              <p style={{ fontWeight: 700 }}>Analysis Error</p>
-              <p style={{ fontSize: 13, marginTop: 4 }}>{err}</p>
+            <div style={{ color: '#dc2626', padding: 24, textAlign: 'center', background: '#fef2f2', borderRadius: 12, border: '1px solid #fca5a5' }}>
+              <p style={{ fontWeight: 700, marginBottom: 8 }}>Analysis Error</p>
+              <p style={{ fontSize: 13 }}>{err}</p>
             </div>
-          ) : (
+          ) : data ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
               <section>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                   <span style={{ fontSize: 18 }}>📞</span>
                   <label style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-muted)' }}>Personalized Call Opener</label>
                 </div>
-                <div className="opener-text">"{data?.callOpener || 'Opener could not be generated.'}"</div>
-                <button className="copy-btn" onClick={() => navigator.clipboard.writeText(data?.callOpener || '')}>⎘ Copy Opener</button>
+                <div className="opener-text">"{data.callOpener || 'Opener could not be generated.'}"</div>
+                <button className="copy-btn" onClick={() => navigator.clipboard.writeText(data.callOpener || '')}>⎘ Copy Opener</button>
               </section>
 
               <section>
@@ -219,24 +224,24 @@ function AnalysisDrawer({ lead, onClose }) {
                   <label style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-muted)' }}>Email Strategy</label>
                 </div>
                 <div style={{ background: 'var(--bg)', padding: 20, borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>Subject: <span style={{ color: 'var(--text)' }}>{data?.emailSubject || 'No Subject'}</span></div>
-                  <div style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.7 }}>{data?.emailOpener}</div>
-                  <button className="copy-btn" style={{ marginTop: 16 }} onClick={() => navigator.clipboard.writeText(`Subject: ${data?.emailSubject}\n\n${data?.emailOpener}`)}>⎘ Copy Full Email</button>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>Subject: <span style={{ color: 'var(--text)' }}>{data.emailSubject || 'No Subject'}</span></div>
+                  <div style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.7 }}>{data.emailOpener}</div>
+                  <button className="copy-btn" style={{ marginTop: 16 }} onClick={() => navigator.clipboard.writeText(`Subject: ${data.emailSubject}\n\n${data.emailOpener}`)}>⎘ Copy Full Email</button>
                 </div>
               </section>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div style={{ background: 'var(--bg)', padding: 16, borderRadius: 12, border: '1px solid var(--border)' }}>
                   <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 800, marginBottom: 4 }}>Est. Value</div>
-                  <div style={{ fontSize: 20, color: 'var(--green)', fontWeight: 800 }}>{data?.estimatedProjectValue || '~$3K'}</div>
+                  <div style={{ fontSize: 20, color: 'var(--green)', fontWeight: 800 }}>{data.estimatedProjectValue || '~$3K'}</div>
                 </div>
                 <div style={{ background: 'var(--bg)', padding: 16, borderRadius: 12, border: '1px solid var(--border)' }}>
                   <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 800, marginBottom: 4 }}>Web Grade</div>
-                  <div style={{ fontSize: 20, color: 'var(--accent)', fontWeight: 800 }}>{data?.websiteGrade || 'C'}</div>
+                  <div style={{ fontSize: 20, color: 'var(--accent)', fontWeight: 800 }}>{data.websiteGrade || 'C'}</div>
                 </div>
               </div>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
@@ -253,7 +258,7 @@ export default function Dashboard() {
 
   const filteredLeads = useMemo(() => {
     return LEADS.filter(l => {
-      const matchSearch = l.name.toLowerCase().includes(search.toLowerCase()) || 
+      const matchSearch = l.name.toLowerCase().includes(search.toLowerCase()) ||
                           l.city.toLowerCase().includes(search.toLowerCase()) ||
                           l.niche.toLowerCase().includes(search.toLowerCase());
       const matchCountry = filters.country === 'all' || l.country === filters.country;
@@ -276,7 +281,7 @@ export default function Dashboard() {
           <span>LeadHunter <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>Pro</span></span>
         </div>
         <div className="header-meta">
-          <button 
+          <button
             onClick={() => { navigator.clipboard.writeText(VIBE_PROMPT); alert('Vibe Prospecting Prompt copied to clipboard!'); }}
             style={{ background: 'var(--accent)', color: 'white', border: 'none', padding: '6px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
           >
