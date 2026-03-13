@@ -254,24 +254,56 @@ function AnalysisDrawer({ lead, onClose }) {
 export default function Dashboard() {
   const [activeLead, setActiveLead] = useState(null);
   const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState({ country: 'all', site: 'all', niche: 'all', sort: 'score_asc' });
+  const [filters, setFilters] = useState({ 
+    country: 'all', 
+    site: 'all', 
+    niche: 'all', 
+    sort: 'score_asc',
+    minSpend: 0,
+    employees: 'all',
+    missingPhone: false,
+    noSocials: false
+  });
 
   const countries = useMemo(() => ['all', ...new Set(LEADS.map(l => l.country))], []);
   const niches = useMemo(() => ['all', ...new Set(LEADS.map(l => l.niche))], []);
+  const employeeRanges = useMemo(() => ['all', ...new Set(LEADS.map(l => l.employees))], []);
+
+  const clearFilters = () => {
+    setFilters({
+      country: 'all',
+      site: 'all',
+      niche: 'all',
+      sort: 'score_asc',
+      minSpend: 0,
+      employees: 'all',
+      missingPhone: false,
+      noSocials: false
+    });
+    setSearch('');
+  };
 
   const filteredLeads = useMemo(() => {
     return LEADS.filter(l => {
       const matchSearch = l.name.toLowerCase().includes(search.toLowerCase()) || 
                           l.city.toLowerCase().includes(search.toLowerCase()) ||
                           l.niche.toLowerCase().includes(search.toLowerCase());
+      
       const matchCountry = filters.country === 'all' || l.country === filters.country;
       const matchNiche = filters.niche === 'all' || l.niche === filters.niche;
       const matchSite = filters.site === 'all' || (filters.site === 'yes' ? l.hasWebsite : !l.hasWebsite);
-      return matchSearch && matchCountry && matchNiche && matchSite;
+      const matchSpend = l.techSpend >= filters.minSpend;
+      const matchEmployees = filters.employees === 'all' || l.employees === filters.employees;
+      
+      const matchMissingPhone = !filters.missingPhone || !l.phone;
+      const matchNoSocials = !filters.noSocials || (!l.socials || (!l.socials.facebook && !l.socials.instagram));
+
+      return matchSearch && matchCountry && matchNiche && matchSite && matchSpend && matchEmployees && matchMissingPhone && matchNoSocials;
     }).sort((a, b) => {
       if (filters.sort === 'score_asc') return a.websiteScore - b.websiteScore;
       if (filters.sort === 'score_desc') return b.websiteScore - a.websiteScore;
       if (filters.sort === 'name') return a.name.localeCompare(b.name);
+      if (filters.sort === 'spend_desc') return b.techSpend - a.techSpend;
       return 0;
     });
   }, [search, filters]);
@@ -287,8 +319,6 @@ export default function Dashboard() {
           <button 
             onClick={() => { navigator.clipboard.writeText(VIBE_PROMPT); alert('Vibe Prompt copied!'); }}
             style={{ background: '#0f172a', color: 'white', border: 'none', padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 800, cursor: 'pointer', transition: '0.2s' }}
-            onMouseOver={(e) => e.target.style.opacity = '0.9'}
-            onMouseOut={(e) => e.target.style.opacity = '1'}
           >
             📋 Get Vibe Prompt
           </button>
@@ -306,30 +336,60 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="stats-bar" style={{ gap: 0 }}>
+      <div className="stats-bar">
         <div className="stat-item">
-          <div className="stat-value">{LEADS.length}</div>
-          <div className="stat-label">Total Leads</div>
+          <div className="stat-value">{filteredLeads.length}</div>
+          <div className="stat-label">Active Results</div>
         </div>
         <div className="stat-item">
-          <div className="stat-value" style={{ color: '#dc2626' }}>{LEADS.filter(l => l.websiteScore <= 15).length}</div>
+          <div className="stat-value" style={{ color: '#dc2626' }}>{filteredLeads.filter(l => l.websiteScore <= 15).length}</div>
           <div className="stat-label">Critical Health</div>
         </div>
         <div className="stat-item">
-          <div className="stat-value" style={{ color: '#2563eb' }}>{LEADS.filter(l => l.phone).length}</div>
-          <div className="stat-label">With Phone</div>
+          <div className="stat-value" style={{ color: '#2563eb' }}>{filteredLeads.filter(l => l.phone).length}</div>
+          <div className="stat-label">Found Phone</div>
         </div>
         <div className="stat-item">
-          <div className="stat-value" style={{ color: '#16a34a' }}>{LEADS.filter(l => l.hasWebsite).length}</div>
-          <div className="stat-label">With Website</div>
+          <div className="stat-value" style={{ color: '#16a34a' }}>{filteredLeads.filter(l => l.hasWebsite).length}</div>
+          <div className="stat-label">Has Website</div>
         </div>
       </div>
 
       <div className="main-layout">
         <aside className="sidebar">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1 }}>Filters</h3>
+            <button onClick={clearFilters} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Reset All</button>
+          </div>
+
           <div className="sidebar-section">
             <label className="sidebar-label">Search</label>
-            <input type="text" className="filter-input" placeholder="Business or city..." value={search} onChange={e => setSearch(e.target.value)} />
+            <input type="text" className="filter-input" placeholder="Name, city, or niche..." value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+
+          <div className="sidebar-section">
+            <label className="sidebar-label">Tech Spend: ${filters.minSpend}+</label>
+            <input 
+              type="range" 
+              min="0" max="5000" step="500"
+              value={filters.minSpend} 
+              onChange={e => setFilters({...filters, minSpend: parseInt(e.target.value)})}
+              style={{ width: '100%', accentColor: '#0f172a' }}
+            />
+          </div>
+
+          <div className="sidebar-section">
+            <label className="sidebar-label">Quick Fix Targets</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                <input type="checkbox" checked={filters.missingPhone} onChange={e => setFilters({...filters, missingPhone: e.target.checked})} />
+                Missing Phone Number
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                <input type="checkbox" checked={filters.noSocials} onChange={e => setFilters({...filters, noSocials: e.target.checked})} />
+                Zero Social Presence
+              </label>
+            </div>
           </div>
 
           <div className="sidebar-section">
@@ -351,11 +411,19 @@ export default function Dashboard() {
           </div>
 
           <div className="sidebar-section">
+            <label className="sidebar-label">Employee Count</label>
+            <select className="filter-input" value={filters.employees} onChange={e => setFilters({...filters, employees: e.target.value})}>
+              {employeeRanges.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+
+          <div className="sidebar-section">
             <label className="sidebar-label">Sorting</label>
             <select className="filter-input" value={filters.sort} onChange={e => setFilters({...filters, sort: e.target.value})}>
-              <option value="score_asc">Lowest Health First</option>
-              <option value="score_desc">Highest Health First</option>
-              <option value="name">Name A-Z</option>
+              <option value="score_asc">Worst Health First</option>
+              <option value="score_desc">Best Health First</option>
+              <option value="spend_desc">Highest Spend First</option>
+              <option value="name">Alphabetical</option>
             </select>
           </div>
         </aside>
@@ -366,6 +434,13 @@ export default function Dashboard() {
               <LeadCard key={lead.id} lead={lead} onAnalyze={setActiveLead} />
             ))}
           </div>
+          {filteredLeads.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '100px 0', color: '#64748b' }}>
+              <h2 style={{ fontSize: 40 }}>🏜️</h2>
+              <p style={{ fontWeight: 700, fontSize: 18, marginTop: 20 }}>No leads match these filters.</p>
+              <button onClick={clearFilters} style={{ marginTop: 12, color: '#2563eb', background: 'none', border: 'none', fontWeight: 700, cursor: 'pointer' }}>Clear all filters</button>
+            </div>
+          )}
         </main>
       </div>
 
