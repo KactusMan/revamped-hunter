@@ -292,7 +292,7 @@ export default function Dashboard() {
           >
             📋 Get Vibe Prompt
           </button>
-          <div className="header-badge" style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bcf0da' }}>Gemini 1.5 Pro Enabled</div>
+          <div className="header-badge" style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bcf0da' }}>Gemini 1.5 Flash Enabled</div>
         </div>
       </header>
 

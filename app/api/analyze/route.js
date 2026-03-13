@@ -46,14 +46,18 @@ Known Issues: ${lead.flaws.join('; ')}`;
 
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           system_instruction: { parts: [{ text: systemPrompt }] },
           contents: [{ parts: [{ text: userMessage }] }],
-          generationConfig: { temperature: 0.75, maxOutputTokens: 1000 },
+          generationConfig: { 
+            temperature: 0.7, 
+            maxOutputTokens: 1000,
+            response_mime_type: "application/json"
+          },
         }),
       }
     );
