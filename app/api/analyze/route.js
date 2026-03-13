@@ -1,4 +1,4 @@
-﻿export async function POST(request) {
+export async function POST(request) {
   const { lead } = await request.json();
 
   const systemPrompt = `You are a Senior US-based Sales Strategist and Conversion Rate Optimization (CRO) Expert. Your goal is to analyze small business (SMB) data and generate high-impact, "native-sounding" outreach assets that close deals.
@@ -9,7 +9,6 @@
 3. PATTERN INTERRUPTS: The openers must sound like a quick, casual observation from a local expert who just happened to be on their site.
 4. TONE: Use contractions (don't, it's, you're). Keep it "Brooklyn/London/Toronto Professional" — direct, slightly hurried, but helpful.
 5. SPECIFICITY: Don't say "your SEO is bad." Say "your 'Emergency Plumber' page doesn't even show up for people in [City]."
-6. WEBSITE VERIFICATION: If the provided link is a Linktree, social media page, or looks like a parked GoDaddy page, mention in "topFlaws" that they lack a professional standalone domain which is hurting their local SEO credibility.
 
 ### CONTEXT FOR SMB TYPES:
 - Plumbers/Contractors/Electricians/Roofers/HVAC: Focus on "lost leads" and "mobile click-to-call." These guys get ALL their business from local search — if they're not ranking, they're invisible.
@@ -27,8 +26,8 @@ Return ONLY a valid JSON object — no markdown, no backticks, no explanation:
   "callOpener": "Hey, I was just on [business name]'s site and noticed something weird on the mobile version — [specific observation]. I do web work for [niche] businesses around [city] and I reckon there's a quick fix here that'd get you more calls. Got 2 minutes?",
   "emailSubject": "3-5 words, curiosity-driven e.g. 'broken link on [site]'",
   "emailOpener": "2-sentence hook referencing a specific flaw immediately. No pleasantries.",
-  "urgencySignals": ["concrete reason to act now with $ impact if possible", "second urgency reason"],
-  "estimatedProjectValue": "$X,XXX – $X,XXX",
+  "urgencySignals": ["concrete reason to act now with dollar impact if possible", "second urgency reason"],
+  "estimatedProjectValue": "$X,XXX - $X,XXX",
   "pitchAngle": "The psychological hook e.g. 'The Invisible Competitor' or 'The Leaky Bucket'"
 }`;
 
@@ -36,7 +35,7 @@ Return ONLY a valid JSON object — no markdown, no backticks, no explanation:
 
 Business Name: ${lead.name}
 Niche: ${lead.niche}
-Website: ${lead.hasWebsite ? lead.website : 'NO WEBSITE — business has no web presence at all'}
+Website: ${lead.hasWebsite ? lead.website : 'NO WEBSITE — business has zero web presence'}
 Location: ${lead.city}, ${lead.country}
 Employees: ${lead.employees}
 Revenue: ${lead.revenue}
@@ -46,11 +45,8 @@ Social Networks: ${lead.socialNetworks}
 Known Issues: ${lead.flaws.join('; ')}`;
 
   try {
-    // Log to confirm API Key is present in the Vercel environment
-    console.log('GEMINI_API_KEY available:', !!process.env.GEMINI_API_KEY);
-
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -63,22 +59,10 @@ Known Issues: ${lead.flaws.join('; ')}`;
     );
 
     const data = await response.json();
-    
-    // Log the raw response from Gemini to see what we're getting
-    console.log('Gemini Raw Response:', JSON.stringify(data, null, 2));
-
-    let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    
-    // Nuclear clean: find the first { and last } and take everything in between
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    const clean = jsonMatch ? jsonMatch[0] : text;
-    
-    try {
-      const parsed = JSON.parse(clean);
-      return Response.json({ success: true, analysis: parsed });
-    } catch (parseErr) {
-      return Response.json({ success: false, error: 'AI returned invalid format. Try again.' }, { status: 500 });
-    }
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const parsed = JSON.parse(clean);
+    return Response.json({ success: true, analysis: parsed });
   } catch (err) {
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
