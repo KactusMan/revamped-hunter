@@ -1,22 +1,26 @@
 export async function POST(request) {
   const { lead } = await request.json();
 
-  const systemPrompt = `You are a Lead Verification Assistant. Your job is to check if the provided website for a business is likely their official, most professional domain.
-If the website is a Linktree, a Facebook page, or a parked domain, suggest a real, standalone professional website if one exists.
-
-Return ONLY a JSON object:
+  const systemPrompt = `You are a Lead Verification Assistant. Find official website, phone, and socials.
+Return ONLY JSON:
 {
   "isValid": true/false,
-  "suggestedDomain": "actual-domain.com",
-  "suggestedWebsite": "https://actual-domain.com",
+  "suggestedDomain": "domain.com",
+  "suggestedWebsite": "https://domain.com",
   "reason": "Brief reason",
-  "socials": { "facebook": "url or null", "instagram": "url or null", "linkedin": "url or null" },
-  "phone": "string or null"
+  "socials": { "facebook": "url", "instagram": "url", "linkedin": "url" },
+  "phone": "string"
 }`;
 
   const userMessage = `Business: ${lead.name}\nWebsite: ${lead.website || 'None'}\nLocation: ${lead.city}, ${lead.country}`;
 
-  const models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+  const models = [
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-flash-latest',
+    'gemini-pro-latest'
+  ];
+  
   let lastError = null;
 
   for (const model of models) {
@@ -38,14 +42,18 @@ Return ONLY a JSON object:
 
       if (!response.ok) {
         if (response.status === 429) {
-          lastError = "Quota exceeded";
+          lastError = `Quota exceeded for ${model}`;
           continue;
         }
         throw new Error(data.error?.message || "Error");
       }
 
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-      return Response.json({ success: true, verification: JSON.parse(text), modelUsed: model });
+      return Response.json({ 
+        success: true, 
+        verification: JSON.parse(text), 
+        modelUsed: model 
+      });
 
     } catch (err) {
       lastError = err.message;

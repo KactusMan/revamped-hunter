@@ -1,40 +1,32 @@
 export async function POST(request) {
   const { lead } = await request.json();
 
-  const systemPrompt = `You are a Senior US-based Sales Strategist and Conversion Rate Optimization (CRO) Expert. Your goal is to analyze small business (SMB) data and generate high-impact, "native-sounding" outreach assets that close deals.
-
-### THE GOLDEN RULES OF NATIVE OUTREACH:
-1. NO "SALESESE": Avoid words like "unleash," "revolutionary," "optimize," "digital transformation," or "dear."
-2. NO FORMALITY: Do not use "Sir/Madam" or "I hope this finds you well." Start like a peer, not a salesperson.
-3. PATTERN INTERRUPTS: The openers must sound like a quick, casual observation from a local expert who just happened to be on their site.
-4. TONE: Use contractions (don't, it's, you're). Keep it "Brooklyn/London/Toronto Professional" — direct, slightly hurried, but helpful.
-5. SPECIFICITY: Don't say "your SEO is bad." Say "your 'Emergency Plumber' page doesn't even show up for people in [City]."
-
-### JSON OUTPUT SCHEMA:
+  const systemPrompt = `You are a Senior Sales Strategist and CRO Expert. Analyze this lead and generate outreach assets.
 Return ONLY a valid JSON object:
 {
-  "websiteGrade": "F",
+  "websiteGrade": "A-F",
   "topFlaws": ["flaw 1", "flaw 2", "flaw 3"],
-  "opportunity": "One punchy sentence",
-  "callOpener": "Script...",
-  "emailSubject": "Subject...",
-  "emailOpener": "Body...",
-  "estimatedProjectValue": "$X,XXX - $X,XXX"
+  "opportunity": "punchy sentence",
+  "callOpener": "Casual, peer-to-peer phone script",
+  "emailSubject": "3-5 words",
+  "emailOpener": "2-sentence hook",
+  "estimatedProjectValue": "$X,XXX"
 }`;
 
   const userMessage = `Business: ${lead.name}\nNiche: ${lead.niche}\nWebsite: ${lead.website || 'None'}\nLocation: ${lead.city}\nKnown Issues: ${(lead.flaws || []).join('; ')}`;
 
+  // FALLBACK LIST based on confirmed available models
   const models = [
+    'gemini-2.5-flash',
     'gemini-2.0-flash',
-    'gemini-1.5-flash',
-    'gemini-1.5-pro'
+    'gemini-flash-latest',
+    'gemini-pro-latest'
   ];
 
   let lastError = null;
 
   for (const model of models) {
     try {
-      console.log(`Attempting analysis with ${model}...`);
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
         {
@@ -55,19 +47,21 @@ Return ONLY a valid JSON object:
       const data = await response.json();
 
       if (!response.ok) {
-        if (response.status === 429 || data.error?.message?.includes('quota')) {
-          console.warn(`${model} quota exceeded, trying next...`);
-          lastError = data.error?.message;
+        if (response.status === 429 || data.error?.message?.toLowerCase().includes('quota')) {
+          lastError = `Quota exceeded for ${model}`;
           continue;
         }
         throw new Error(data.error?.message || `API Error ${response.status}`);
       }
 
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-      return Response.json({ success: true, analysis: JSON.parse(text), modelUsed: model });
+      return Response.json({ 
+        success: true, 
+        analysis: JSON.parse(text), 
+        modelUsed: model 
+      });
 
     } catch (err) {
-      console.error(`Error with ${model}:`, err.message);
       lastError = err.message;
     }
   }

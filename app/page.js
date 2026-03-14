@@ -47,7 +47,7 @@ const getFillClass = (s) => {
   return 'fill-high';
 };
 
-function LeadCard({ lead: initialLead, onAnalyze }) {
+function LeadCard({ lead: initialLead, onAnalyze, systemStatus, updateStatus }) {
   const [lead, setLead] = useState(initialLead);
   const [verifying, setVerifying] = useState(false);
   
@@ -56,8 +56,14 @@ function LeadCard({ lead: initialLead, onAnalyze }) {
   const fillClass = getFillClass(lead.websiteScore);
 
   const handleVerify = async (e) => {
+    if (systemStatus.isCooldown) {
+      alert("System cooling down to prevent rate limits. Wait a few seconds.");
+      return;
+    }
     e.preventDefault();
     setVerifying(true);
+    updateStatus({ lastAction: 'Verifying...' });
+    
     try {
       const res = await fetch('/api/verify', {
         method: 'POST',
@@ -65,9 +71,9 @@ function LeadCard({ lead: initialLead, onAnalyze }) {
         body: JSON.stringify({ lead }),
       });
       const data = await res.json();
+      
       if (data.success && data.verification) {
         const v = data.verification;
-        // Update local state with verified info
         const updatedLead = { 
           ...lead, 
           website: v.suggestedWebsite || lead.website,
@@ -77,14 +83,27 @@ function LeadCard({ lead: initialLead, onAnalyze }) {
           socials: { ...lead.socials, ...v.socials }
         };
         setLead(updatedLead);
+        updateStatus({ 
+          lastModel: data.modelUsed, 
+          status: 'Online', 
+          lastAction: 'Verify Success' 
+        });
         alert(`Verification Successful!\n\nStatus: ${v.isValid ? '✓ VALID' : '✗ INVALID'}\nPhone: ${v.phone || 'Found'}\nSocials: ${Object.keys(v.socials || {}).filter(k => v.socials[k]).join(', ') || 'N/A'}`);
       } else {
+        updateStatus({ status: 'Error', lastAction: 'Verify Failed' });
         alert(`Verify failed: ${data.error || 'Unknown error'}`);
       }
     } catch (err) {
+      updateStatus({ status: 'Error', lastAction: 'Network Error' });
       alert(`Network error: ${err.message}`);
     }
     setVerifying(false);
+    triggerCooldown();
+  };
+
+  const triggerCooldown = () => {
+    updateStatus({ isCooldown: true });
+    setTimeout(() => updateStatus({ isCooldown: false }), 2000);
   };
 
   return (
@@ -120,12 +139,6 @@ function LeadCard({ lead: initialLead, onAnalyze }) {
           </div>
         )}
 
-        <div className="tech-stack" style={{ marginBottom: 12 }}>
-          {lead.webTech && lead.webTech.split(' / ').map((t, i) => (
-            <span key={i} className="tech-tag">{t}</span>
-          ))}
-        </div>
-
         <div className="analysis-box">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
             <span className="score-label">Site Health</span>
@@ -134,11 +147,6 @@ function LeadCard({ lead: initialLead, onAnalyze }) {
               <span style={{ fontWeight: 800, fontSize: 14 }}>{lead.websiteScore}</span>
             </div>
           </div>
-          {lead.flaws && lead.flaws.length > 0 && (
-            <div className="analysis-flaws">
-              {lead.flaws.slice(0, 1).map((f, i) => <div key={i} className="flaw-item" style={{ fontSize: 12 }}>{f}</div>)}
-            </div>
-          )}
         </div>
       </div>
 
@@ -147,23 +155,24 @@ function LeadCard({ lead: initialLead, onAnalyze }) {
           {lead.hasWebsite && lead.website && (
             <a href={lead.website} target="_blank" rel="noopener" className="card-link" style={{ flex: 1 }}>Site ↗</a>
           )}
-          <button className="card-link" onClick={handleVerify} style={{ flex: 1, cursor: verifying ? 'wait' : 'pointer' }} disabled={verifying}>
-            {verifying ? '...' : '🔍 Verify Business'}
+          <button className="card-link" onClick={handleVerify} style={{ flex: 1, cursor: verifying ? 'wait' : 'pointer' }} disabled={verifying || systemStatus.isCooldown}>
+            {verifying ? '...' : '🔍 Verify'}
           </button>
         </div>
-        <button className="analyze-btn" onClick={() => onAnalyze(lead)}>⚡ Generate AI Opener</button>
+        <button className="analyze-btn" onClick={() => onAnalyze(lead)} disabled={systemStatus.isCooldown}>⚡ Generate AI Opener</button>
       </div>
     </div>
   );
 }
 
-function AnalysisDrawer({ lead, onClose }) {
+function AnalysisDrawer({ lead, onClose, systemStatus, updateStatus }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
 
   useEffect(() => {
     setLoading(true);
+    updateStatus({ lastAction: 'Analyzing...' });
     fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -173,14 +182,17 @@ function AnalysisDrawer({ lead, onClose }) {
       .then(j => {
         if (j.success && j.analysis) {
           setData(j.analysis);
+          updateStatus({ lastModel: j.modelUsed, status: 'Online', lastAction: 'Analyze Success' });
         } else {
-          setErr(j.error || 'Check GEMINI_API_KEY');
+          setErr(j.error);
+          updateStatus({ status: 'Error', lastAction: 'Analyze Failed' });
         }
         setLoading(false);
       })
       .catch(e => {
         setErr(e.message);
         setLoading(false);
+        updateStatus({ status: 'Error', lastAction: 'Analyze Error' });
       });
   }, [lead.id]);
 
@@ -193,7 +205,6 @@ function AnalysisDrawer({ lead, onClose }) {
           <div>
             <h2 style={{ fontSize: 28, fontWeight: 900, color: '#0f172a' }}>{lead.name}</h2>
             <p style={{ color: '#64748b', fontSize: 14, fontWeight: 600 }}>{lead.niche} • {lead.city}, {lead.country}</p>
-            {lead.phone && <p style={{ color: 'var(--blue)', fontSize: 14, fontWeight: 700, marginTop: 4 }}>📞 {lead.phone}</p>}
           </div>
           <button onClick={onClose} style={{ background: '#f1f5f9', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 24, width: 40, height: 40, borderRadius: '50%', fontWeight: 800 }}>×</button>
         </div>
@@ -208,7 +219,6 @@ function AnalysisDrawer({ lead, onClose }) {
             <div style={{ color: '#dc2626', padding: 32, textAlign: 'center', background: '#fef2f2', borderRadius: 16, border: '1px solid #fca5a5' }}>
               <p style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>Analysis Failed</p>
               <p style={{ fontSize: 14 }}>{err}</p>
-              <p style={{ fontSize: 12, marginTop: 12, color: '#991b1b' }}>Try switching to a different Gemini model or check your quota.</p>
             </div>
           ) : data ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
@@ -217,8 +227,8 @@ function AnalysisDrawer({ lead, onClose }) {
                   <span style={{ fontSize: 24 }}>📞</span>
                   <label style={{ fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1.5, color: '#64748b' }}>Call Opener</label>
                 </div>
-                <div className="opener-text" style={{ fontSize: 17, background: '#f8fafc', borderLeft: '6px solid #0f172a' }}>"{data.callOpener}"</div>
-                <button className="copy-btn" style={{ padding: '8px 16px', fontSize: 13 }} onClick={() => navigator.clipboard.writeText(data.callOpener || '')}>⎘ Copy Call Script</button>
+                <div className="opener-text" style={{ fontSize: 17, background: '#f8fafc', borderLeft: '6px solid #0f172a', padding: 20, borderRadius: 8 }}>"{data.callOpener}"</div>
+                <button className="copy-btn" onClick={() => navigator.clipboard.writeText(data.callOpener || '')}>⎘ Copy Call Script</button>
               </section>
 
               <section>
@@ -227,22 +237,11 @@ function AnalysisDrawer({ lead, onClose }) {
                   <label style={{ fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1.5, color: '#64748b' }}>Email Strategy</label>
                 </div>
                 <div style={{ background: '#f8fafc', padding: 24, borderRadius: 12, border: '1px solid #e2e8f0' }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: '#64748b', marginBottom: 12, textTransform: 'uppercase' }}>Subject: <span style={{ color: '#0f172a' }}>{data.emailSubject}</span></div>
-                  <div style={{ fontSize: 15, color: '#334155', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{data.emailOpener}</div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#64748b', marginBottom: 12 }}>Subject: <span style={{ color: '#0f172a' }}>{data.emailSubject}</span></div>
+                  <div style={{ fontSize: 15, color: '#334155', lineHeight: 1.8 }}>{data.emailOpener}</div>
                   <button className="copy-btn" style={{ marginTop: 20 }} onClick={() => navigator.clipboard.writeText(`Subject: ${data.emailSubject}\n\n${data.emailOpener}`)}>⎘ Copy Email</button>
                 </div>
               </section>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-                <div style={{ background: 'white', padding: 20, borderRadius: 16, border: '2px solid #f1f5f9' }}>
-                  <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', fontWeight: 900, marginBottom: 6 }}>Est. Deal Value</div>
-                  <div style={{ fontSize: 24, color: '#16a34a', fontWeight: 900 }}>{data.estimatedProjectValue || '~$3,000'}</div>
-                </div>
-                <div style={{ background: 'white', padding: 20, borderRadius: 16, border: '2px solid #f1f5f9' }}>
-                  <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', fontWeight: 900, marginBottom: 6 }}>Website Grade</div>
-                  <div style={{ fontSize: 24, color: '#0f172a', fontWeight: 900 }}>{data.websiteGrade || 'C'}</div>
-                </div>
-              </div>
             </div>
           ) : null}
         </div>
@@ -255,31 +254,25 @@ export default function Dashboard() {
   const [activeLead, setActiveLead] = useState(null);
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({ 
-    country: 'all', 
-    site: 'all', 
-    niche: 'all', 
-    sort: 'score_asc',
-    minSpend: 0,
-    employees: 'all',
-    missingPhone: false,
-    noSocials: false
+    country: 'all', site: 'all', niche: 'all', sort: 'score_asc',
+    minSpend: 0, employees: 'all', missingPhone: false, noSocials: false
   });
+
+  const [systemStatus, setSystemStatus] = useState({
+    status: 'Online',
+    lastModel: 'gemini-2.5-flash',
+    lastAction: 'Idle',
+    isCooldown: false
+  });
+
+  const updateStatus = (newStatus) => setSystemStatus(prev => ({ ...prev, ...newStatus }));
 
   const countries = useMemo(() => ['all', ...new Set(LEADS.map(l => l.country))], []);
   const niches = useMemo(() => ['all', ...new Set(LEADS.map(l => l.niche))], []);
   const employeeRanges = useMemo(() => ['all', ...new Set(LEADS.map(l => l.employees))], []);
 
   const clearFilters = () => {
-    setFilters({
-      country: 'all',
-      site: 'all',
-      niche: 'all',
-      sort: 'score_asc',
-      minSpend: 0,
-      employees: 'all',
-      missingPhone: false,
-      noSocials: false
-    });
+    setFilters({ country: 'all', site: 'all', niche: 'all', sort: 'score_asc', minSpend: 0, employees: 'all', missingPhone: false, noSocials: false });
     setSearch('');
   };
 
@@ -288,23 +281,19 @@ export default function Dashboard() {
       const matchSearch = l.name.toLowerCase().includes(search.toLowerCase()) || 
                           l.city.toLowerCase().includes(search.toLowerCase()) ||
                           l.niche.toLowerCase().includes(search.toLowerCase());
-      
       const matchCountry = filters.country === 'all' || l.country === filters.country;
       const matchNiche = filters.niche === 'all' || l.niche === filters.niche;
       const matchSite = filters.site === 'all' || (filters.site === 'yes' ? l.hasWebsite : !l.hasWebsite);
       const matchSpend = l.techSpend >= filters.minSpend;
       const matchEmployees = filters.employees === 'all' || l.employees === filters.employees;
-      
       const matchMissingPhone = !filters.missingPhone || !l.phone;
       const matchNoSocials = !filters.noSocials || (!l.socials || (!l.socials.facebook && !l.socials.instagram));
-
       return matchSearch && matchCountry && matchNiche && matchSite && matchSpend && matchEmployees && matchMissingPhone && matchNoSocials;
     }).sort((a, b) => {
       if (filters.sort === 'score_asc') return a.websiteScore - b.websiteScore;
       if (filters.sort === 'score_desc') return b.websiteScore - a.websiteScore;
-      if (filters.sort === 'name') return a.name.localeCompare(b.name);
       if (filters.sort === 'spend_desc') return b.techSpend - a.techSpend;
-      return 0;
+      return a.name.localeCompare(b.name);
     });
   }, [search, filters]);
 
@@ -318,11 +307,13 @@ export default function Dashboard() {
         <div className="header-meta">
           <button 
             onClick={() => { navigator.clipboard.writeText(VIBE_PROMPT); alert('Vibe Prompt copied!'); }}
-            style={{ background: '#0f172a', color: 'white', border: 'none', padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 800, cursor: 'pointer', transition: '0.2s' }}
+            style={{ background: '#0f172a', color: 'white', border: 'none', padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
           >
             📋 Get Vibe Prompt
           </button>
-          <div className="header-badge" style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bcf0da' }}>Gemini 2.5 Flash Active</div>
+          <div className="header-badge" style={{ background: systemStatus.status === 'Online' ? '#f0fdf4' : '#fef2f2', color: systemStatus.status === 'Online' ? '#16a34a' : '#dc2626' }}>
+            {systemStatus.status === 'Online' ? `● ${systemStatus.lastModel}` : '● System Offline'}
+          </div>
         </div>
       </header>
 
@@ -330,66 +321,36 @@ export default function Dashboard() {
         <div className="ticker-inner" style={{ display: 'flex', gap: 50, whiteSpace: 'nowrap', animation: 'ticker 40s linear infinite', paddingLeft: '100%' }}>
           {LEADS.slice(0, 20).map((l, i) => (
             <div key={i} style={{ display: 'flex', gap: 10 }}>
-              <span style={{ color: '#f59e0b' }}>[OPPORTUNITY]</span> {l.name} in {l.city} — Score: {l.websiteScore}
+              <span style={{ color: '#f59e0b' }}>[NEW]</span> {l.name} in {l.city} — Score: {l.websiteScore}
             </div>
           ))}
         </div>
       </div>
 
       <div className="stats-bar">
-        <div className="stat-item">
-          <div className="stat-value">{filteredLeads.length}</div>
-          <div className="stat-label">Active Results</div>
-        </div>
-        <div className="stat-item">
-          <div className="stat-value" style={{ color: '#dc2626' }}>{filteredLeads.filter(l => l.websiteScore <= 15).length}</div>
-          <div className="stat-label">Critical Health</div>
-        </div>
-        <div className="stat-item">
-          <div className="stat-value" style={{ color: '#2563eb' }}>{filteredLeads.filter(l => l.phone).length}</div>
-          <div className="stat-label">Found Phone</div>
-        </div>
-        <div className="stat-item">
-          <div className="stat-value" style={{ color: '#16a34a' }}>{filteredLeads.filter(l => l.hasWebsite).length}</div>
-          <div className="stat-label">Has Website</div>
-        </div>
+        <div className="stat-item"><div className="stat-value">{filteredLeads.length}</div><div className="stat-label">Active Leads</div></div>
+        <div className="stat-item"><div className="stat-value" style={{ color: systemStatus.isCooldown ? '#f59e0b' : '#16a34a' }}>{systemStatus.status}</div><div className="stat-label">API Status</div></div>
+        <div className="stat-item"><div className="stat-value" style={{ color: '#2563eb', fontSize: 14 }}>{systemStatus.lastAction}</div><div className="stat-label">Last Action</div></div>
       </div>
 
       <div className="main-layout">
         <aside className="sidebar">
+          <div style={{ background: '#f8fafc', padding: 16, borderRadius: 12, marginBottom: 24, border: '1px solid #e2e8f0' }}>
+            <h4 style={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', marginBottom: 8, color: '#64748b' }}>API Health</h4>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: systemStatus.isCooldown ? '#f59e0b' : '#16a34a' }}></div>
+              <span style={{ fontSize: 12, fontWeight: 700 }}>{systemStatus.isCooldown ? 'Cooling Down (Rate Limit Safe)' : 'Ready for Requests'}</span>
+            </div>
+          </div>
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1 }}>Filters</h3>
-            <button onClick={clearFilters} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Reset All</button>
+            <h3 style={{ fontSize: 14, fontWeight: 800, textTransform: 'uppercase' }}>Filters</h3>
+            <button onClick={clearFilters} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Reset</button>
           </div>
 
           <div className="sidebar-section">
             <label className="sidebar-label">Search</label>
-            <input type="text" className="filter-input" placeholder="Name, city, or niche..." value={search} onChange={e => setSearch(e.target.value)} />
-          </div>
-
-          <div className="sidebar-section">
-            <label className="sidebar-label">Tech Spend: ${filters.minSpend}+</label>
-            <input 
-              type="range" 
-              min="0" max="5000" step="500"
-              value={filters.minSpend} 
-              onChange={e => setFilters({...filters, minSpend: parseInt(e.target.value)})}
-              style={{ width: '100%', accentColor: '#0f172a' }}
-            />
-          </div>
-
-          <div className="sidebar-section">
-            <label className="sidebar-label">Quick Fix Targets</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                <input type="checkbox" checked={filters.missingPhone} onChange={e => setFilters({...filters, missingPhone: e.target.checked})} />
-                Missing Phone Number
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                <input type="checkbox" checked={filters.noSocials} onChange={e => setFilters({...filters, noSocials: e.target.checked})} />
-                Zero Social Presence
-              </label>
-            </div>
+            <input type="text" className="filter-input" placeholder="Business or city..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
 
           <div className="sidebar-section">
@@ -411,19 +372,11 @@ export default function Dashboard() {
           </div>
 
           <div className="sidebar-section">
-            <label className="sidebar-label">Employee Count</label>
-            <select className="filter-input" value={filters.employees} onChange={e => setFilters({...filters, employees: e.target.value})}>
-              {employeeRanges.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-          </div>
-
-          <div className="sidebar-section">
             <label className="sidebar-label">Sorting</label>
             <select className="filter-input" value={filters.sort} onChange={e => setFilters({...filters, sort: e.target.value})}>
               <option value="score_asc">Worst Health First</option>
               <option value="score_desc">Best Health First</option>
               <option value="spend_desc">Highest Spend First</option>
-              <option value="name">Alphabetical</option>
             </select>
           </div>
         </aside>
@@ -431,20 +384,13 @@ export default function Dashboard() {
         <main className="leads-area">
           <div className="leads-grid">
             {filteredLeads.map((lead) => (
-              <LeadCard key={lead.id} lead={lead} onAnalyze={setActiveLead} />
+              <LeadCard key={lead.id} lead={lead} onAnalyze={setActiveLead} systemStatus={systemStatus} updateStatus={updateStatus} />
             ))}
           </div>
-          {filteredLeads.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '100px 0', color: '#64748b' }}>
-              <h2 style={{ fontSize: 40 }}>🏜️</h2>
-              <p style={{ fontWeight: 700, fontSize: 18, marginTop: 20 }}>No leads match these filters.</p>
-              <button onClick={clearFilters} style={{ marginTop: 12, color: '#2563eb', background: 'none', border: 'none', fontWeight: 700, cursor: 'pointer' }}>Clear all filters</button>
-            </div>
-          )}
         </main>
       </div>
 
-      {activeLead && <AnalysisDrawer lead={activeLead} onClose={() => setActiveLead(null)} />}
+      {activeLead && <AnalysisDrawer lead={activeLead} onClose={() => setActiveLead(null)} systemStatus={systemStatus} updateStatus={updateStatus} />}
 
       <style jsx global>{`
         @keyframes ticker { from { transform: translateX(0); } to { transform: translateX(-100%); } }
