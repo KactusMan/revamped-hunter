@@ -10,92 +10,67 @@ export async function POST(request) {
 4. TONE: Use contractions (don't, it's, you're). Keep it "Brooklyn/London/Toronto Professional" — direct, slightly hurried, but helpful.
 5. SPECIFICITY: Don't say "your SEO is bad." Say "your 'Emergency Plumber' page doesn't even show up for people in [City]."
 
-### CONTEXT FOR SMB TYPES:
-- Plumbers/Contractors/Electricians/Roofers/HVAC: Focus on "lost leads" and "mobile click-to-call."
-- Dentists/Doctors/Physio: Focus on "trust signals" and "online booking friction."
-- Restaurants/Bakeries/Cafes: Focus on "menu readability," "Google Maps optimization," and "local search visibility."
-- Recruiters/Staffing: Focus on "candidate trust" and "job listing UX."
-- Cleaners/Pet Groomers/Locksmiths: Focus on "emergency/urgent need" and "instant quote/booking."
-
 ### JSON OUTPUT SCHEMA:
-Return ONLY a valid JSON object — no markdown, no backticks, no preamble, no explanation whatsoever:
+Return ONLY a valid JSON object:
 {
   "websiteGrade": "F",
-  "topFlaws": ["specific flaw 1 with city/context", "specific flaw 2", "specific flaw 3"],
-  "opportunity": "One punchy sentence on the single biggest revenue opportunity",
-  "callOpener": "Hey, I was just on [business name]'s site and noticed something weird on the mobile version — [specific observation]. I do web work for [niche] businesses around [city] and I reckon there's a quick fix here that'd get you more calls. Got 2 minutes?",
-  "emailSubject": "3-5 words, curiosity-driven",
-  "emailOpener": "2-sentence hook referencing a specific flaw immediately. No pleasantries.",
-  "urgencySignals": ["concrete reason to act now with dollar impact if possible", "second urgency reason"],
-  "estimatedProjectValue": "$X,XXX - $X,XXX",
-  "pitchAngle": "The psychological hook e.g. 'The Invisible Competitor' or 'The Leaky Bucket'"
+  "topFlaws": ["flaw 1", "flaw 2", "flaw 3"],
+  "opportunity": "One punchy sentence",
+  "callOpener": "Script...",
+  "emailSubject": "Subject...",
+  "emailOpener": "Body...",
+  "estimatedProjectValue": "$X,XXX - $X,XXX"
 }`;
 
-  const userMessage = `Analyze the following lead and generate outreach assets:
+  const userMessage = `Business: ${lead.name}\nNiche: ${lead.niche}\nWebsite: ${lead.website || 'None'}\nLocation: ${lead.city}\nKnown Issues: ${(lead.flaws || []).join('; ')}`;
 
-Business Name: ${lead.name}
-Niche: ${lead.niche}
-Website: ${lead.hasWebsite ? lead.website : 'NO WEBSITE — business has zero web presence'}
-Location: ${lead.city}, ${lead.country}
-Employees: ${lead.employees}
-Revenue: ${lead.revenue}
-Current Tech Stack: ${lead.webTech}
-Annual Tech Spend: $${lead.techSpend}
-Social Networks: ${lead.socialNetworks}
-Known Issues: ${lead.flaws.join('; ')}`;
+  const models = [
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
+    'gemini-1.5-pro'
+  ];
 
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: systemPrompt }] },
-          contents: [{ parts: [{ text: userMessage }] }],
-          generationConfig: { 
-            temperature: 0.7, 
-            maxOutputTokens: 2048,
-            response_mime_type: "application/json"
-          },
-        }),
-      }
-    );
+  let lastError = null;
 
-    const data = await response.json();
-
-    if (!response.ok || data.error) {
-      const errMsg = data.error?.message || `Gemini API error: ${response.status}`;
-      return Response.json({ success: false, error: errMsg }, { status: 500 });
-    }
-
-    let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-
-    // If Gemini truncates, we try to find the start and manually close it for a "best effort" parse
-    let clean = text;
-    const firstBrace = text.indexOf('{');
-    const lastBrace = text.lastIndexOf('}');
-    
-    if (firstBrace !== -1) {
-      if (lastBrace !== -1 && lastBrace > firstBrace) {
-        clean = text.substring(firstBrace, lastBrace + 1);
-      } else {
-        // Truncated JSON - try to close the most likely structures
-        clean = text.substring(firstBrace) + '"]}'; 
-      }
-    }
-
+  for (const model of models) {
     try {
-      const parsed = JSON.parse(clean);
-      return Response.json({ success: true, analysis: parsed });
-    } catch (parseErr) {
-      // One last attempt: just return the raw text if it looks like it might have useful info
-      console.error('Final Parse Error:', parseErr, 'Raw:', text);
-      return Response.json({ success: false, error: 'AI response was interrupted. Please try again.' }, { status: 500 });
-    }
+      console.log(`Attempting analysis with ${model}...`);
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: systemPrompt }] },
+            contents: [{ parts: [{ text: userMessage }] }],
+            generationConfig: { 
+              temperature: 0.7, 
+              maxOutputTokens: 2048,
+              response_mime_type: "application/json"
+            },
+          }),
+        }
+      );
 
-  } catch (err) {
-    console.error('Analyze route error:', err.message);
-    return Response.json({ success: false, error: err.message }, { status: 500 });
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 429 || data.error?.message?.includes('quota')) {
+          console.warn(`${model} quota exceeded, trying next...`);
+          lastError = data.error?.message;
+          continue;
+        }
+        throw new Error(data.error?.message || `API Error ${response.status}`);
+      }
+
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+      return Response.json({ success: true, analysis: JSON.parse(text), modelUsed: model });
+
+    } catch (err) {
+      console.error(`Error with ${model}:`, err.message);
+      lastError = err.message;
+    }
   }
+
+  return Response.json({ success: false, error: `All models failed. Last error: ${lastError}` }, { status: 500 });
 }
